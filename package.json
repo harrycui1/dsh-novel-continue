@@ -24,6 +24,10 @@
     "./doc-bridge": {
       "types": "./src/doc-bridge.ts",
       "default": "./dist/doc-bridge.js"
+    },
+    "./novel": {
+      "types": "./src/novel.ts",
+      "default": "./dist/novel.js"
     }
   },
   "dsh": {
@@ -41,7 +45,9 @@
     "build": "node ./scripts/build-client.mjs",
     "test": "node ./tests/verify-bundle.mjs",
     "switch": "node ./scripts/switch-preset.mjs",
-    "prepublishOnly": "node ./scripts/build-client.mjs && node ./tests/verify-bundle.mjs"
+    "prepublishOnly": "node ./scripts/build-client.mjs && node ./tests/verify-bundle.mjs",
+    "build:novel": "npx -y esbuild@0.24.0 src/novel.ts --format=esm --platform=node --target=node22 --outfile=dist/novel.js",
+    "test:novel": "node --test tests/novel.test.mjs"
   },
   "keywords": [
     "deepseek-harness",
@@ -58,8 +64,9 @@
     "url": "git+https://github.com/Anarcadia/chuanban-dsh-writingset.git"
   },
   "files": [
-    "dist",
     "cordis.patch.yml",
+    "dist",
+    "prompts",
     "src"
   ]
 }

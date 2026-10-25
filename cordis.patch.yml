@@ -11,9 +11,99 @@
 
 - id: agent-preset-registry
   config:
-    default: writing
+    default: novel
 
 - insert:
+    # =========================================================================
+    # 续写指挥（conductor）：编辑对话的对象。不亲自写正文，只调度 novel_* 节点工具。
+    # 节点的模型与提示词写死在 novel-continue 插件配置与 prompts/ 里，指挥改不了。
+    # =========================================================================
+    - id: preset-novel
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: novel
+        name: 续写指挥
+        description: 把约 1 万字的网文续写到约 3 万字。指挥调度读原文、规划、写作、审稿、改稿、更新备忘等节点，每个节点用写死的模型。
+        order: 0
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              complete: true
+              includeRuntimeContext: false
+              prefix: |-
+                【当前职能：续写指挥】
+                你负责把当前工作区里的网文从约 1 万字续写到约 3 万字。你不亲自写正文，所有读原文、规划、写作、审稿、改稿都通过 novel_* 工具交给专职节点；你负责判断下一步做什么、结果过不过关、什么时候停下来问编辑。
+
+                【工作区】当前目录就是一本书：原文.txt（编辑放入）、续写方向.md（编辑写的方向，可选）、备忘.md、剧情点.md、正文/第NN章.md、成稿.txt。
+
+                【流程】
+                1. 开工或不确定进度时，先调 novel_status。
+                2. 没有备忘：问编辑保留原文到第几章（分叉点，之后的原文会被续写替换）；编辑已说明就直接调 novel_analyze。
+                3. 没有剧情点：续写方向优先用编辑在对话里说的，其次是 续写方向.md，都没有就问编辑。按「目标总字数 3 万 − 已有字数」÷ 每章约 1000 字算出章数，调 novel_plan。
+                4. 规划完把各章章名和一句话梗概给编辑看，然后停下等编辑确认或修改。编辑要改个别章，用 edit 直接改 剧情点.md，或带新方向重新 novel_plan。
+                5. 逐章执行：novel_write_chapter → novel_review_chapter → 若 revise 则 novel_revise_chapter 再审，同一章最多改 2 次 → 通过后 novel_update_memo，再进入下一章。
+                6. 同一章改 2 次仍不过、或节点报错，停下来把审稿意见或错误原样告诉编辑，问怎么处理。
+                7. 全部章节写完后调 novel_export，报告总字数。
+
+                【两种模式】默认是对话模式：第 4 步一定停下等确认，之后逐章推进，每章只用一句话汇报（章号、字数、审稿结论）。编辑说「一口气跑完」「不用问我」之类时切到连续模式：跳过第 4 步的等待，一直跑到结束或卡住。
+
+                【编辑插话】编辑对某章不满意，用 novel_revise_chapter 并把编辑原话放进 instructions，改完再审、再 novel_update_memo。编辑想看某章，用 read 读 正文/ 里的文件。
+
+                【规矩】
+                - 不要用 write / edit 直接改 正文/ 里的章节，正文的任何改动都走 novel_revise_chapter；只有编辑明确要求手工改某句时例外。
+                - 不要自己编剧情、替编辑做方向决定；方向有歧义就问。
+                - 汇报简短，用中文，不要输出代码审阅式的修改报告。
+          - id: novel-fs
+            name: cordis:group
+            group: true
+            isolate:
+              fs: true
+              attachments: true
+            config:
+              - id: fs-local
+                name: '@deepseek-ai/dsh-fs-local'
+              - id: tool-fs
+                name: '@deepseek-ai/dsh-tool-fs'
+              - id: fs-search
+                name: '@deepseek-ai/dsh-tool-fs-search'
+                config:
+                  sampleOverCapGlobResults: false
+              - id: novel-continue
+                name: 'chuanban-dsh-writingset/novel'
+                config:
+                  provider: deepseek-official
+                  subagentProvider: spawn
+                  nodePreset: novel-node
+                  chapterChars: 1000
+                  recentChapters: 3
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+
+    # 续写节点：novel_* 工具起的子 Agent 用它。没有任何工具，任务说明全在用户消息里。
+    - id: preset-novel-node
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: novel-node
+        name: 续写节点（内部）
+        description: 供续写指挥的节点工具内部使用，不要直接选。
+        order: 99
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              complete: true
+              includeRuntimeContext: false
+              prefix: 你是网文创作流水线中的一个专职节点。严格按用户消息里的任务说明完成，只输出要求的内容，不寒暄、不解释。
+
     # 1. 宿主侧积木动态注入器：负责后台选项配置与 {{writing_active_brick}} 变量注册
     - id: writing-brick-injector
       name: 'chuanban-dsh-writingset'
