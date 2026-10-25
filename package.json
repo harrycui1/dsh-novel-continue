@@ -30,6 +30,10 @@
     "writing"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/harrycui1/dsh-novel-continue.git"
+  },
   "files": [
     "dist",
     "prompts",
