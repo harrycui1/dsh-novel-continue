@@ -16,7 +16,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const name = 'novel-continue';
-export const inject = ['tools', 'fs', 'subagents'];
+export const inject = ['tools', 'fs', 'subagents', 'workingDirectory'];
 
 type Stage = 'analyze' | 'plan' | 'write' | 'review' | 'revise' | 'memo';
 
@@ -265,8 +265,11 @@ export function apply(ctx: any, config: NovelConfig = {}) {
 
   // ---- 工作区 ----
 
-  async function bookDir(): Promise<string> {
-    const target = await ctx.fs.resolve('.');
+  /** 书目录 = 调用方会话的当前工作目录（与 read/write 等文件工具同源），不是进程启动目录。 */
+  async function bookDir(exec: any): Promise<string> {
+    if (!exec?.agent) throw new Error('novel 工具需要由 Agent 调用（exec.agent 缺失）');
+    const cwd = await ctx.workingDirectory.ensure(exec.agent, exec.signal);
+    const target = await ctx.fs.resolve('.', { cwd, signal: exec.signal });
     return ctx.fs.processPath(target);
   }
 
@@ -341,7 +344,7 @@ export function apply(ctx: any, config: NovelConfig = {}) {
   ): Promise<{ text: string; structured?: any; model: string }> {
     if (!exec?.agent) throw new Error('novel 工具需要由 Agent 调用（exec.agent 缺失）');
     const s = stages[stage];
-    const dir = await bookDir();
+    const dir = await bookDir(exec);
     const models = [s.model, s.fallbackModel].filter((m): m is string => !!m);
     const failures: string[] = [];
     for (const model of models) {
@@ -420,8 +423,8 @@ export function apply(ctx: any, config: NovelConfig = {}) {
     description: '查看当前书的续写进度：分叉点、备忘与剧情点是否就绪、已写章节字数、每章审稿状态、下一步该写哪章。开工和不确定进度时先调它。',
     parameters: { type: 'object', properties: {} },
     output: textTool(),
-    async execute() {
-      const dir = await bookDir();
+    async execute(_args: unknown, exec: any) {
+      const dir = await bookDir(exec);
       const p = paths(dir);
       const book = await readJson<BookState>(p.book);
       const plan = parsePlan(await readText(p.plan));
@@ -459,7 +462,7 @@ export function apply(ctx: any, config: NovelConfig = {}) {
     },
     output: textTool(),
     async execute(args: { keep_chapters?: number }, exec: any) {
-      const dir = await bookDir();
+      const dir = await bookDir(exec);
       const p = paths(dir);
       const raw = await readText(p.original);
       if (!raw) throw new Error('书目录下没有 原文.txt');
@@ -492,7 +495,7 @@ export function apply(ctx: any, config: NovelConfig = {}) {
     },
     output: textTool(),
     async execute(args: { chapters: number; start_chapter?: number; direction?: string }, exec: any) {
-      const dir = await bookDir();
+      const dir = await bookDir(exec);
       const p = paths(dir);
       const memo = await readText(p.memo);
       if (!memo) throw new Error('还没有 备忘.md，先调 novel_analyze。');
@@ -528,7 +531,7 @@ export function apply(ctx: any, config: NovelConfig = {}) {
     },
     output: textTool(),
     async execute(args: { chapter: number }, exec: any) {
-      const dir = await bookDir();
+      const dir = await bookDir(exec);
       const p = paths(dir);
       const { plan, current } = await requirePlanned(dir, args.chapter);
       const next = plan.find((c) => c.number === args.chapter + 1);
@@ -562,7 +565,7 @@ export function apply(ctx: any, config: NovelConfig = {}) {
     },
     output: textTool(),
     async execute(args: { chapter: number }, exec: any) {
-      const dir = await bookDir();
+      const dir = await bookDir(exec);
       const p = paths(dir);
       const { current } = await requirePlanned(dir, args.chapter);
       const body = await readText(p.chapter(args.chapter));
@@ -603,7 +606,7 @@ export function apply(ctx: any, config: NovelConfig = {}) {
     },
     output: textTool(),
     async execute(args: { chapter: number; instructions?: string; use_review?: boolean }, exec: any) {
-      const dir = await bookDir();
+      const dir = await bookDir(exec);
       const p = paths(dir);
       const { current } = await requirePlanned(dir, args.chapter);
       const body = await readText(p.chapter(args.chapter));
@@ -642,7 +645,7 @@ export function apply(ctx: any, config: NovelConfig = {}) {
     },
     output: textTool(),
     async execute(args: { chapter: number }, exec: any) {
-      const dir = await bookDir();
+      const dir = await bookDir(exec);
       const p = paths(dir);
       const memo = await readText(p.memo);
       const body = await readText(p.chapter(args.chapter));
@@ -669,8 +672,8 @@ export function apply(ctx: any, config: NovelConfig = {}) {
     description: '把 正文/ 下所有章节按原文格式合并成 成稿.txt，返回总字数。',
     parameters: { type: 'object', properties: {} },
     output: textTool(),
-    async execute() {
-      const dir = await bookDir();
+    async execute(_args: unknown, exec: any) {
+      const dir = await bookDir(exec);
       const p = paths(dir);
       const nums = await writtenChapters(dir);
       const title = (await readText(p.original)).split('\n')[0]?.trim() || '成稿';

@@ -1,31 +1,12 @@
 {
-  "name": "chuanban-dsh-writingset",
-  "version": "0.3.0",
+  "name": "dsh-novel-continue",
+  "version": "0.1.0",
   "type": "module",
-  "description": "DeepSeek Harness (DSH) 纯净写作协作模式插件（与 Storydesk 工作台内核等效）",
-  "main": "./dist/index.js",
-  "types": "./src/index.ts",
+  "description": "DeepSeek Harness (DSH) 网文续写插件：续写指挥 Agent 调度读原文、规划、写作、审稿、改稿、更新备忘等节点，每个节点用写死的模型与提示词。",
+  "main": "./dist/novel.js",
+  "types": "./src/novel.ts",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "default": "./dist/index.js"
-    },
-    "./presets": {
-      "types": "./src/presets.ts",
-      "default": "./dist/presets.js"
-    },
-    "./client": {
-      "default": "./dist/client.js"
-    },
-    "./file-butler": {
-      "types": "./src/file-butler.ts",
-      "default": "./dist/file-butler.js"
-    },
-    "./doc-bridge": {
-      "types": "./src/doc-bridge.ts",
-      "default": "./dist/doc-bridge.js"
-    },
-    "./novel": {
       "types": "./src/novel.ts",
       "default": "./dist/novel.js"
     }
@@ -33,40 +14,28 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
-    },
-    "client": {
-      "platform": "web",
-      "inject": [
-        "@deepseek-ai/dsh-client-ui-settings"
-      ]
     }
   },
   "scripts": {
-    "build": "node ./scripts/build-client.mjs",
-    "test": "node ./tests/verify-bundle.mjs",
-    "switch": "node ./scripts/switch-preset.mjs",
-    "prepublishOnly": "node ./scripts/build-client.mjs && node ./tests/verify-bundle.mjs",
-    "build:novel": "npx -y esbuild@0.24.0 src/novel.ts --format=esm --platform=node --target=node22 --outfile=dist/novel.js",
-    "test:novel": "node --test tests/novel.test.mjs"
+    "build": "npx -y esbuild@0.24.0 src/novel.ts --format=esm --platform=node --target=node22 --outfile=dist/novel.js",
+    "test": "node --test tests/novel.test.mjs",
+    "prepack": "npm run build && npm test"
   },
   "keywords": [
     "deepseek-harness",
     "dsh",
+    "dsh-plugin",
     "cordis",
-    "writing",
-    "storydesk",
-    "preset"
+    "novel",
+    "writing"
   ],
-  "author": "船板",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Anarcadia/chuanban-dsh-writingset.git"
-  },
   "files": [
-    "cordis.patch.yml",
     "dist",
     "prompts",
-    "src"
+    "src",
+    "cordis.patch.yml",
+    "scripts/install-local.sh",
+    "LICENSE"
   ]
 }

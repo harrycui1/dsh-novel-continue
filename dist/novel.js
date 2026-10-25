@@ -3,7 +3,7 @@ import { appendFile, copyFile, mkdir, readFile, readdir, writeFile } from "node:
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 const name = "novel-continue";
-const inject = ["tools", "fs", "subagents"];
+const inject = ["tools", "fs", "subagents", "workingDirectory"];
 const DEFAULT_STAGES = {
   analyze: { model: "deepseek-v4-pro", fallbackModel: "deepseek-flash", reasoningEffort: "high", maxTokens: 16e3 },
   plan: { model: "deepseek-v4-pro", fallbackModel: "deepseek-flash", reasoningEffort: "high", maxTokens: 24e3 },
@@ -170,8 +170,10 @@ function apply(ctx, config = {}) {
   for (const [k, v] of Object.entries(config.stages ?? {})) {
     stages[k] = { ...stages[k], ...v };
   }
-  async function bookDir() {
-    const target = await ctx.fs.resolve(".");
+  async function bookDir(exec) {
+    if (!exec?.agent) throw new Error("novel \u5DE5\u5177\u9700\u8981\u7531 Agent \u8C03\u7528\uFF08exec.agent \u7F3A\u5931\uFF09");
+    const cwd = await ctx.workingDirectory.ensure(exec.agent, exec.signal);
+    const target = await ctx.fs.resolve(".", { cwd, signal: exec.signal });
     return ctx.fs.processPath(target);
   }
   const paths = (dir) => ({
@@ -226,7 +228,7 @@ ${(await readText(paths(dir).chapter(n))).trim()}`);
   async function runNode(exec, stage, label, text, schema) {
     if (!exec?.agent) throw new Error("novel \u5DE5\u5177\u9700\u8981\u7531 Agent \u8C03\u7528\uFF08exec.agent \u7F3A\u5931\uFF09");
     const s = stages[stage];
-    const dir = await bookDir();
+    const dir = await bookDir(exec);
     const models = [s.model, s.fallbackModel].filter((m) => !!m);
     const failures = [];
     for (const model of models) {
@@ -297,8 +299,8 @@ ${(await readText(paths(dir).chapter(n))).trim()}`);
     description: "\u67E5\u770B\u5F53\u524D\u4E66\u7684\u7EED\u5199\u8FDB\u5EA6\uFF1A\u5206\u53C9\u70B9\u3001\u5907\u5FD8\u4E0E\u5267\u60C5\u70B9\u662F\u5426\u5C31\u7EEA\u3001\u5DF2\u5199\u7AE0\u8282\u5B57\u6570\u3001\u6BCF\u7AE0\u5BA1\u7A3F\u72B6\u6001\u3001\u4E0B\u4E00\u6B65\u8BE5\u5199\u54EA\u7AE0\u3002\u5F00\u5DE5\u548C\u4E0D\u786E\u5B9A\u8FDB\u5EA6\u65F6\u5148\u8C03\u5B83\u3002",
     parameters: { type: "object", properties: {} },
     output: textTool(),
-    async execute() {
-      const dir = await bookDir();
+    async execute(_args, exec) {
+      const dir = await bookDir(exec);
       const p = paths(dir);
       const book = await readJson(p.book);
       const plan = parsePlan(await readText(p.plan));
@@ -335,7 +337,7 @@ ${(await readText(paths(dir).chapter(n))).trim()}`);
     },
     output: textTool(),
     async execute(args, exec) {
-      const dir = await bookDir();
+      const dir = await bookDir(exec);
       const p = paths(dir);
       const raw = await readText(p.original);
       if (!raw) throw new Error("\u4E66\u76EE\u5F55\u4E0B\u6CA1\u6709 \u539F\u6587.txt");
@@ -368,7 +370,7 @@ ${c.body}`).join("\n\n");
     },
     output: textTool(),
     async execute(args, exec) {
-      const dir = await bookDir();
+      const dir = await bookDir(exec);
       const p = paths(dir);
       const memo = await readText(p.memo);
       if (!memo) throw new Error("\u8FD8\u6CA1\u6709 \u5907\u5FD8.md\uFF0C\u5148\u8C03 novel_analyze\u3002");
@@ -407,7 +409,7 @@ ${outline.join("\n")}` };
     },
     output: textTool(),
     async execute(args, exec) {
-      const dir = await bookDir();
+      const dir = await bookDir(exec);
       const p = paths(dir);
       const { plan, current } = await requirePlanned(dir, args.chapter);
       const next = plan.find((c) => c.number === args.chapter + 1);
@@ -440,7 +442,7 @@ ${outline.join("\n")}` };
     },
     output: textTool(),
     async execute(args, exec) {
-      const dir = await bookDir();
+      const dir = await bookDir(exec);
       const p = paths(dir);
       const { current } = await requirePlanned(dir, args.chapter);
       const body = await readText(p.chapter(args.chapter));
@@ -481,7 +483,7 @@ ${issues.join("\n")}` : ""}` };
     },
     output: textTool(),
     async execute(args, exec) {
-      const dir = await bookDir();
+      const dir = await bookDir(exec);
       const p = paths(dir);
       const { current } = await requirePlanned(dir, args.chapter);
       const body = await readText(p.chapter(args.chapter));
@@ -519,7 +521,7 @@ ${issues.join("\n")}` : ""}` };
     },
     output: textTool(),
     async execute(args, exec) {
-      const dir = await bookDir();
+      const dir = await bookDir(exec);
       const p = paths(dir);
       const memo = await readText(p.memo);
       const body = await readText(p.chapter(args.chapter));
@@ -545,8 +547,8 @@ ${issues.join("\n")}` : ""}` };
     description: "\u628A \u6B63\u6587/ \u4E0B\u6240\u6709\u7AE0\u8282\u6309\u539F\u6587\u683C\u5F0F\u5408\u5E76\u6210 \u6210\u7A3F.txt\uFF0C\u8FD4\u56DE\u603B\u5B57\u6570\u3002",
     parameters: { type: "object", properties: {} },
     output: textTool(),
-    async execute() {
-      const dir = await bookDir();
+    async execute(_args, exec) {
+      const dir = await bookDir(exec);
       const p = paths(dir);
       const nums = await writtenChapters(dir);
       const title = (await readText(p.original)).split("\n")[0]?.trim() || "\u6210\u7A3F";

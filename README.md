@@ -1,167 +1,170 @@
-# chuanban-dsh-writingset
+# dsh-novel-continue
 
-> **DeepSeek Harness (DSH) 纯净写作协作预设插件**  
-> *Minimal writing-collaboration preset for DeepSeek Harness — zero coding noise, `read / write / edit`, read-only `glob / grep`, safe `copy / move / trash / stat`, zero-dep `docx ↔ md` bridge, and modular role prompts.*
+DeepSeek Harness（DSH）网文续写插件。把约 1 万字的网文续写到约 3 万字：编辑在 DSH 里和「续写指挥」对话，指挥调度读原文、规划、写作、审稿、改稿、更新备忘这几个节点，每个节点用写死的模型和提示词，结果可复现。
 
-**极简介绍**：船板自用 DSH 写作工作台，砍掉 DSH 所有系统提示（接近极简模式），同时比极简模式增加贴合写作全流程的本地工具集（读写改、只读查找、可恢复文件整理、Word 稿件进出），添加情境代入写作人设，帮助 Agent 更好代入。
+## 工作方式
 
-插件本身不具备破限和风格指定效果，破限和风格指定需要用户在工作区添加世界观和写作风格资料、伪上下文；插件预设起到的作用，是帮助 Agent 更好地接受和理解你的设定，就像药引子。
-
-插件有 2 件套，可搭配船板的仿 Claude 暖纸皮肤 [`chuanban-dsh-theme`](https://github.com/Anarcadia/chuanban-dsh-theme) 使用。
-
----
-
-写作者需要的 Agent 工作台其实极其简单：
-
-**一个由本地文件夹与 Markdown 文档构成的工作区**
-
-**一个不受工具说明和编程提示词干扰，系统提示词专为沉浸写作设计的 Agent 伙伴。**
-
-大多数通用或编程向 Agent 默认在后台塞入了数千字的“资深软件工程师”规训、代码规范、沙箱审批说明与庞大的工具链。拿它们来推敲小说、打磨长文或对戏时，模型总会带着强烈的“程序员肌肉记忆”——聊着天擅自落盘建文件、改完一段文字还要像交代码 PR 一样列出 `1. 2. 3.` 修改汇报，甚至时不时跳出语境做温和化说教。
-
-DSH 在这一点上也不例外。虽然它内置了「极简模式（`minimal`）」，但那是一个近乎 0 提示词、0 文件工具的跑分向模式。在清掉噪音的同时，也失去了对 Agent 写作身份的引导与最基础的本地读写工具，因此并不适合直接拿来写作。
-
-`chuanban-dsh-writingset` 的目标只有一件事：**赋予 DSH 极简、稳定的基础写作预设和工具环境**。
-
-它在 DSH 运行时将原生编程提示词与冗余工具一刀切清零（**零 Shell 命令执行通道**），把工具面精准收敛为写作者真正用得上的四组纯路径工具——基础读写（`read` / `write` / `edit`）、只读查找（`glob` / `grep`）、安全文件整理（`copy_file` / `move_file` / `trash_file` / `stat_file`）与零依赖 Word 单向桥（`convert_document` / `export_document`），再用**「去工程化的用户协作基底 + 极简写作人设」双层提示词积木**接管上下文。
-
-于是，首轮输入仅 **1,196 tokens**（比官方标准预设节省逾 **80%**），让 DSH 成为一张高效、低底噪的纯文字工作台。
-
-用户还可通过后台设置，选择加载工作台 `AGENTS.md` / `CLAUDE.md` 等通用 Agent 规则文档，与上述的二层提示词叠加，构成**三层提示词积木**，因此此插件不会与本地 Skill、工作区预设冲突。
-
-然而，和其它同样修改 DSH 初始系统提示词的写作预设插件会有潜在冲突，不建议一同开启，或者建议发送给 AI 分析确保无冲突后再使用。
-
-![DSH 写作协作模式与暖纸皮肤实机效果](docs/screenshot-session.png)
-
----
-
-## 一键安装
-
-### 1. DSH Desktop 桌面端（最简）
-
-打开 **设置 → 插件**，在安装输入框直接粘贴以下 URL：
-
-```text
-https://github.com/Anarcadia/chuanban-dsh-writingset/releases/latest/download/chuanban-dsh-writingset.tgz
+```
+编辑 ⇄ 续写指挥（主 Agent，只调度不写正文）
+          │ 调用 novel_* 工具
+          ▼
+   ┌──────────────────────────────────────────────┐
+   │ 工具内部：代码组装上下文 → 起子 Agent → 结果落盘 │
+   └──────────────────────────────────────────────┘
+     读原文 → 规划 → ⏸ 编辑确认 → 逐章[写作 → 检查 → 审稿 → 改稿(≤2次) → 更新备忘]
 ```
 
-### 2. DSH CLI 命令行
+- **指挥只调度**：决定先做什么、要不要返工、什么时候停下来问编辑；改不了节点的模型和提示词。
+- **节点写死**：每个节点的模型、推理强度、输出上限在插件配置里，提示词在 `prompts/`。
+- **最小上下文**：写作节点只拿到「续写备忘 + 本章剧情点 + 最近 3 章全文」，看不到整份规划，防止提前写后面的剧情。
+- **新人物、新地点只能由规划节点提出**，写作节点不许自创。
+- **两种模式**：默认对话模式，规划完一定停下等编辑确认；编辑说「一口气跑完」就连续跑到底，只在卡住时问人。
+
+## 环境要求
+
+- DSH **0.2.1-rc.2** 的 web 或桌面端（已实测 web）。DSH 还在预览期，接口可能变，换版本前先在测试机验证。
+- 只能在 **web / 桌面端** 用：插件靠 DSH 的「预设」机制，headless 一次性模式和 SDK profile 不组装预设。
+- 用 CLI 启动时需要 Node ≥ 22.19（DSH 入口依赖 `import.meta.main`）。
+- 默认模型是 DeepSeek 官方的 `deepseek-v4-pro` 与 `deepseek-flash`，需要在 DSH「设置 → 模型」里配好 DeepSeek 密钥，或启动前设置环境变量 `DEEPSEEK_API_KEY`。
+
+## 安装
+
+安装包是 `dsh-novel-continue-<版本>.tgz`。装完都要**重启 DSH**，然后在输入框上方的预设选择器里能看到「续写指挥」（插件会把它设为默认）。
+
+### 方式一：DSH CLI（需要 pnpm 10 或以上）
 
 ```sh
-dsh plugin --profile web add https://github.com/Anarcadia/chuanban-dsh-writingset/releases/latest/download/chuanban-dsh-writingset.tgz
-dsh web
+dsh plugin --profile web add ./dsh-novel-continue-0.1.0.tgz
 ```
 
-- **未全局安装 `dsh` CLI**：将上面的 `dsh` 替换为 `npx @deepseek-ai/dsh`：
+### 方式二：没有 pnpm
 
-  ```sh
-  npx @deepseek-ai/dsh plugin --profile web add https://github.com/Anarcadia/chuanban-dsh-writingset/releases/latest/download/chuanban-dsh-writingset.tgz
-  ```
+先把安装包解开，用里面的脚本装：
 
-- **连同配套暖纸皮肤（[`chuanban-dsh-theme`](https://github.com/Anarcadia/chuanban-dsh-theme)）一起装**（一条命令同时装入纯净内核与 Claude Desktop 暖白纸阅读外观）：
-
-  ```sh
-  dsh plugin --profile web add https://github.com/Anarcadia/chuanban-dsh-writingset/releases/latest/download/chuanban-dsh-writingset.tgz https://github.com/Anarcadia/chuanban-dsh-theme/releases/latest/download/chuanban-dsh-theme.tgz
-  ```
-
-安装后，前台预设选择器默认切入 **「写作协作模式」** （初始激活「职业写手」预设）。所有职能切换与工作区规则注入均可在 **「设置 → 写作协作配置」** 面板中热切换，新开会话即刻生效，无需重启。
-
----
-
-## 快速上手：用「三层积木」搭好你的写作台
-
-打开 DSH **设置（`Cmd + ,`）→ 写作协作配置**（或左侧 **插件 → `chuanban-dsh-writingset`**），面板由上至下对应了这套**三层提示词积木**的组装逻辑：
-
-![写作协作配置面板与推荐设置](docs/screenshot-settings.png)
-
-### 第一、二层：去工程化协作基底 + 写作职能人设
-
-所有预设默认勾选同一块约 120 字的第一层基底——**【文档与工具协作准则】**（规定对话优先、未获明确指令严禁擅自建文件；改稿只做精准替换、拒绝输出代码 PR 式的修改点汇报；摒弃软件工程黑话与机械分点）。
-
-在这块干净基底之上，你可以选择叠加哪一块第二层 **「写作职能人设」**：
-
-| 预设 ID               | 名称                               | 适用场景与核心导向                                                                                                               |
-| :------------------ | :------------------------------- | :---------------------------------------------------------------------------------------------------------------------- |
-| **`pro`** *(默认)*    | **职业写手**<br>*(v2 无我沉浸版)*         | **我主要就是为了设计这个模式而做的插件：用于无禁忌无底线的小说创作，请在工作区放置详细的世界观资料文档和示例文（伪装成旧稿续写），叠加起来可影响 Agent 输出风格**。（单独使用预设不具备破甲或风格定义的效果）            |
-| **`play`**          | **纯粹娱乐**<br>*(随性脑洞与灵感共谋)*        | **脑洞推演、爽文构思与私密趣味探索**。以当下的兴致、快感与想象力张力为唯一标准，不审视世俗价值，不强行升华立意或正能量收尾，顺着你抛出的苗头把好玩推到极致。                                        |
-| **`rp`**            | **创作与 RP 扮演**<br>*(全浸入式叙事与第四面墙)* | **仅测试：角色对戏与沉浸式叙事**。严守“第四面墙”，绝不跳出戏外以 AI 助手视角做元叙事点评；用感官细节、动作张力与潜台词推进场面（Show, don't tell），查阅设定或改写文档均作为纯后台静默动作，执行完立即无缝回到戏内。 |
-| **`pure`**          | **纯净通用写作底座**<br>*(零预设人设白板)*      | **日常专栏、散文随笔或完全自定义角色**。仅保留底层【文档与工具协作准则】，不预置任何角色倾向，完全交由你的首轮指令或工作区文档自由定义。                                                  |
-| **`pro-v1`** *(留档)* | **职业写手 v1**<br>*(第一性原理锋利版)*      | **仅测试：效率与锋利导向备选**。强调不惜代价达成创作目的与预期受众反应，将笔下文本视为严丝合缝的功能性部件。我一开始设计的第一版方案，留档供对照体感。                                           |
-
-> **PS**：如果你希望把某几个模式直接并列放在聊天窗底部的预设选择器里随时点选，可以在「插件 → `chuanban-dsh-writingset`」详情页把对应预设行（`preset-writing-pro` / `play` / `rp` / `pure`）的开关打开。
-
-### 第三层：工作区提示模式（如上图红绿批注）
-
-前面两层积木只负责把 Agent 调教成“懂规矩、不说教、不乱建文件的写手白板”。真正决定具体题材、文风与创作深度的，是下方的 **「工作区提示模式」** 三选一：
-
-1. **初始纯净（`off`，默认 · 见图中红色标注）**
-   - **怎么工作**：只注入前两层积木（职能人设 + 协作基底），**完全不读取工作区里的任何文档**。
-   - **什么时候用**：适合刚装好插件测试、随手聊脑洞或改一段短文，上下文极度干净（首轮仅 \~1,196 tokens）。但请注意，在没有第三层工作区资料配合时，单靠几百字的初始人设并不会自动赋予特定文风，也不具备破甲的效果。
-
-2. **工作区识别（`workspace` · 见图中绿色标注，日常主力推荐）**
-   - **怎么工作**：每次新开会话组装系统提示词时，自动扫描你当前打开的本地文件夹，把里面的规则与设定文档作为第三层 `【工作区上下文规则】` 拼接到前两层积木之后。
-
-   - **自动扫描顺序**：
-
-     ```text
-     AGENTS.md → CLAUDE.md → memory.md → memory/*.md → rules.md → rules/*.md
-     ```
-
-     *(注：`CLAUDE.md` 与 `AGENTS.md` 内容相同时自动去重；总读取上限 64KB，超出自动截断并注明；如果当前文件夹里没有这些文件，会自动静默退回「初始纯净」，不会报错。)*
-
-   - **怎么搭出最佳效果**：
-     - 如果你已经有一套带 `AGENTS.md` 或本地 `.agents/skills/` 的写作工作台，切到这个模式就能无缝衔接，插件不会吃掉你的工作区规则。
-     - 如果你用默认的 **`pro`（职业写手）** 写小说，建议在工作区放一份 `AGENTS.md`（写明你的文风要求与设定目录），并放好详细的**世界观设定文档**与**示例正文（让 Agent 作为旧稿参考或续写）**——“无我职业操守 + 工作区世界观 + 旧稿样本”三层叠在一起，才能真正把模型的注意力锁死在故事语境里。
-
-3. **自定义填写（`custom`）**
-   - **怎么工作**：直接在设置面板的文本框里手写第三层提示词，可选 **「追加在初始提示后（`append`）」**，或者点面板上的「用当前初始提示填充编辑」按钮切到 **「整段替换初始提示（`replace`）」** 直接改写默认积木。
-   - **什么时候用**：不想在本地文件夹里建 `AGENTS.md`，但想临时加几条人设、文风要求或直接微调内置提示词时使用。
-
----
-
-## 底层做了什么？（为什么不与本地 Skill 冲突，但忌叠装同类预设插件）
-
-DSH 原生的 `minimal` 模式之所以不能直接用来写东西，是因为它把文件工具也一起砍掉了；而官方默认模式又挂满了工程插件。本插件在底层通过 `cordis.patch.yml` 与内置子模块做了精确改造：
-
-- **接管并重构主系统提示词（`complete: true`）**：在 `@deepseek-ai/dsh-persona` 开启 `complete: true`，将渲染终点的系统提示词收束为 `{{writing_active_brick}}` 变量，一刀切掉官方数千字的全栈工程师人设。
-  - **为什么不与本地工作台/Skill 冲突**：插件在宿主侧通过 `workspace` 模式主动读取当前会话目录（`cwd`）下的 `AGENTS.md` / `CLAUDE.md` / `memory` / `rules` 并拼入 `{{writing_active_brick}}`（64KB $O(1)$ 安全截断），等于在干净的底座上为你留好了标准的工作区规则入口。
-  - **为什么不建议与其它系统提示词插件同开**：因为 `complete: true` 是独占截断机制，若同时启用其它修改初始 Persona 或拦截 System Prompt 的插件，两者会互相覆盖或拼出混乱指令。
-- **静音沙箱与审批长文（`includeRuntimeContext: false`）**：关掉运行时沙箱策略与审批机制的冗长说明，只留必需的当前工作目录路径感知。
-- **收敛为纯净写作工具面（零 Shell 执行通道，`isolate: { fs: true, attachments: true }`）**：
-  - **基础读写（`@deepseek-ai/dsh-tool-fs`）**：在独立作用域挂载 `read`、`write`、`edit`，切断根作用域 `read_image` 的自动注册，并剥离 `sandbox_permissions` 与 `justification` 参数。
-  - **只读查找（v0.2.0，`@deepseek-ai/dsh-tool-fs-search`）**：挂载 `glob`（列举文件，100 条上限 + 溢出清单；注：`*.md` 为全树递归，`/*.md` 为根层锚定，仅返回文件不返回目录名）与 `grep`（正则全文检索带行号）。
-  - **文件整理（v0.3.0，`file-butler`）**：提供 `copy_file`、`move_file`、`trash_file`、`stat_file` 四个服务端纯路径工具——长稿与二进制流转不经过模型上下文；`copy_file` 与 `move_file` 默认 `overwrite: false` 防误覆写（目标传目录名时自动拼入同名文件）；`trash_file` 将文件移入 `~/.Trash`（带毫秒时间戳与防碰撞序号，可手动恢复，不承诺 Finder「放回原处」元数据），绝不永久删除。
-  - **Word 单向文档桥（v0.3.0，`doc-bridge`）**：零外部依赖提供 `convert_document`（`.docx` → `.md`）与 `export_document`（`.md` → 新建 `.docx`）。定位为**内容级单向转换**：保留正文段落、标题层级（H1–H6）与列表项，表格拍平为正文行，行内粗斜体等样式不保留；内置**双向防覆盖保护**——目标 `.md` 已存在时自动派生 `<name>.converted.md`，目标 `.docx` 已存在时自动派生 `<name>.exported.docx`，绝不修改或覆盖原稿。
-  - *(注：会话中另有宿主运行时自带的 `working_directory` 与 `load_workspace_dependencies`，非本插件注册。)*
-- **保留长文会话压缩**：内置 `@deepseek-ai/dsh-compaction-basic` 与 `/compact` 指令，长篇连载讨论可随时压缩上下文。
-
----
-
-## 进阶：命令行切换与本地自检
-
-如果你克隆了本仓库在本地折腾，也可以直接用自带的零依赖 CLI 脚本查看或切换预设：
-
-```bash
-# 查看所有可用预设积木及当前激活项
-node scripts/switch-preset.mjs --list
-
-# 预览指定预设（如 pro）拼接后的完整 System Prompt
-node scripts/switch-preset.mjs --show pro
-
-# 一键切换默认预设（pro / play / rp / pure / pro-v1）
-node scripts/switch-preset.mjs play
-
-# 运行内置 7 项全链路自检测试套件
-npm test
+```sh
+tar xzf dsh-novel-continue-0.1.0.tgz
+sh package/scripts/install-local.sh ./dsh-novel-continue-0.1.0.tgz
 ```
 
-## 停用与卸载
+脚本默认装到 `~/.dsh/profiles/web`。要装到别的 profile，把目录作为第二个参数传进去，比如桌面版是 `~/.dsh/profiles/desktop`。脚本可以重复执行，第一次会把 profile 的 `package.json` 备份成 `package.json.bak-novel`。
 
-- **临时切回官方编程模式**：不用卸载，直接在聊天输入框左下角的预设选择器切回官方预设，或在「设置 → 插件」中关掉本插件开关即可。
-- **卸载插件**：
-  - **DSH Desktop**：设置 → 插件 → 找到 `chuanban-dsh-writingset` 点击卸载。
-  - **DSH CLI**：`dsh plugin --profile web remove chuanban-dsh-writingset`
+### 方式三：桌面版界面
 
-## License
+打开「设置 → 插件」，在安装输入框里粘贴安装包的下载地址。**这条路尚未实测**，装不上就用方式二，profile 选桌面版的目录。
 
-[MIT](package.json) © 船板
+### 卸载
+
+- CLI：`dsh plugin --profile web remove dsh-novel-continue`
+- 用脚本装的：把 profile 的 `package.json` 换回 `package.json.bak-novel`，再删掉 `node_modules/dsh-novel-continue`。
+
+## 使用
+
+### 1. 准备书目录
+
+一本书一个文件夹，放入：
+
+| 文件 | 说明 |
+|---|---|
+| `原文.txt` | 必需。章节标题要写成「第 N 章」，各平台导出的常见格式都可以（行首缩进、段间空行都没关系） |
+| `续写方向.md` | 可选。编辑写的续写方向；不写的话就在对话里告诉指挥 |
+| `prompts/<节点>.md` | 可选。只对这本书生效的提示词，见下文「自定义提示词」 |
+
+### 2. 打开并对话
+
+**书目录就是会话的工作区。** 插件读写的是当前会话工作区里的文件，与 DSH 进程是在哪个目录启动的无关。所以要先在左侧「Workspaces」里把书目录添加为工作区，再在这个工作区里新建会话。DSH 第一次启动时会建一个 Default workspace（`~/Documents/deepseek-harness/default-workspace`），别在那里面写书。
+
+预设选「续写指挥」（插件已把它设为默认），然后像对编辑助理一样说话，例如：
+
+> 这本书保留原文前 8 章，从第 9 章开始续写，方向在 续写方向.md 里。先读原文生成备忘，然后规划剧情点给我看。
+
+指挥规划完会列出各章章名和梗概，然后停下来。你可以直接回复修改意见，比如「第 22 章的铁盒和第 2 章重复了，改成木匣」，指挥会去改 `剧情点.md`；确认后它会逐章往下写。常用说法：
+
+- 「先只写第 9 章给我看」：小批量试跑。
+- 「一口气跑完」：切到连续模式。
+- 「第 12 章太水了，后半段重写」：指挥会把你的原话交给改稿节点。
+
+**分叉点**：「保留原文前 N 章」之后的原文会被丢掉、由续写替换。原文结尾已经收束的书（写了"全文完"），适合从最后 20% 左右分叉。
+
+### 3. 产出
+
+| 文件 | 内容 |
+|---|---|
+| `备忘.md` | 故事概要、人物（含当前处境）、伏笔、文风观察、已写章节摘要；每章定稿后自动更新 |
+| `剧情点.md` | 逐章剧情点、钩子、新增元素；编辑可以直接改 |
+| `正文/第NN章.md` | 每章一个文件，包括保留下来的原文章节 |
+| `成稿.txt` | 全部写完后按原文格式合并 |
+| `state/` | 进度、每次调用的模型与耗时（`calls.jsonl`）、审稿记录、改稿前的旧稿 |
+
+## 节点与工具
+
+| 指挥可调的工具 | 节点 | 默认模型 | 做什么 |
+|---|---|---|---|
+| `novel_status` | 无（纯代码） | — | 查进度和下一步 |
+| `novel_analyze` | 读原文 | deepseek-v4-pro | 按分叉点拆出原文章节，生成 `备忘.md` |
+| `novel_plan` | 规划 | deepseek-v4-pro | 逐章 5~10 个剧情点、钩子和新增元素 |
+| `novel_write_chapter` | 写作 | deepseek-v4-pro | 写一章，并用代码检查字数和与上一章的重复度 |
+| `novel_review_chapter` | 审稿 | deepseek-flash | 只查越界跑偏、重复、人物与设定、AI 味四项，给出 pass 或 revise 和具体改法 |
+| `novel_revise_chapter` | 改稿 | deepseek-v4-pro | 按审稿意见或编辑要求改，旧稿留档 |
+| `novel_update_memo` | 更新备忘 | deepseek-flash | 写入本章摘要，更新人物处境与伏笔 |
+| `novel_export` | 无（纯代码） | — | 合并成 `成稿.txt` |
+
+每个节点在主模型失败或输出为空时，会自动换到备用模型（`fallbackModel`）。
+
+## 配置
+
+模型和检查阈值都在包里的 `cordis.patch.yml` 中，`novel-continue` 这一行的 `config`：
+
+```yaml
+chapterChars: 1000      # 每章目标字数
+recentChapters: 3       # 写作节点能看到的前文章数
+minCharsRatio: 0.7      # 字数下限 = 目标 × 0.7
+maxCharsRatio: 1.4      # 字数上限 = 目标 × 1.4
+maxRepeatRatio: 0.15    # 与上一章的重合率上限
+stages:
+  write: { model: deepseek-v4-pro, fallbackModel: deepseek-flash, reasoningEffort: high, maxTokens: 16000 }
+  # analyze / plan / review / revise / memo 同理
+```
+
+- 要换成其他模型供应商：先在 DSH「设置 → 模型」里添加该供应商，再把 `provider` 改成它的 Provider ID（比如 `anthropic`），把各节点的 `model` 改成对应的模型 ID。
+- 设计上模型由维护者统一控制，所以改配置的流程是：改 `cordis.patch.yml` → 重新打包 → 重新分发。不要让每个编辑各改各的。
+
+## 自定义提示词
+
+包里的 `prompts/` 是默认提示词。书目录下放同名文件（`prompts/write.md` 等），就只覆盖这本书。
+
+| 文件 | 节点 | 可用占位符 |
+|---|---|---|
+| `analyze.md` | 读原文 | `{{原文}}` `{{章节字数}}` |
+| `plan.md` | 规划 | `{{备忘}}` `{{最近章节}}` `{{续写方向}}` `{{起始章}}` `{{章数}}` `{{每章字数}}` |
+| `write.md` | 写作 | `{{文风约束}}` `{{备忘}}` `{{最近章节}}` `{{本章剧情点}}` `{{下一章开头}}` `{{章号}}` `{{字数}}` |
+| `review.md` | 审稿 | `{{备忘}}` `{{上一章}}` `{{本章剧情点}}` `{{本章正文}}` `{{检查结果}}` |
+| `revise.md` | 改稿 | `{{文风约束}}` `{{备忘}}` `{{上一章}}` `{{本章剧情点}}` `{{本章正文}}` `{{修改要求}}` `{{字数}}` |
+| `memo.md` | 更新备忘 | `{{人物}}` `{{伏笔}}` `{{章号}}` `{{本章正文}}` |
+| `style.md` | 文风约束 | 被写作和改稿节点引用，包括禁用的 AI 套话词表 |
+
+`plan.md` 的输出格式（`## 第NN章 章名`、`- 剧情点`、`钩子：`、`新增：`）会被代码解析，改提示词时这个格式不能动。`analyze.md` 的二级标题（`## 人物`、`## 伏笔与未解决的线`、`## 已写章节摘要`）也会被更新备忘的代码按名字查找，同样不能改名。
+
+## 成本参考
+
+DeepSeek 官方价格下的实测（2026-10，约 1 万字原文，每章约 1000 字）：读原文加规划 22 章约 ¥0.15；每章完整走一轮（写、审、改一次、复审、更新备忘，再加指挥自身的对话）约 ¥0.15。一本书从 1 万字续到 3 万字约 ¥3~4。
+
+## 已知限制
+
+- 只支持 web 和桌面端。批量无人值守还没做，headless 模式不组装预设。
+- 同一时间一本书只能开一个会话在写，多个会话同时写同一个书目录会互相覆盖。
+- `dsh plugin add` 需要 pnpm 10 或以上（DSH 的 profile 用了 pnpm 10 的工作区设置），pnpm 9 会报 `ERR_PNPM_ADDING_TO_ROOT`。
+- 字数、重复度这些代码检查只是兜底，文风和剧情质量仍然需要编辑读稿把关。
+
+## 开发
+
+```sh
+npm run build   # esbuild 把 src/novel.ts 编到 dist/novel.js
+npm test        # 纯函数测试（切章、剧情点解析、重复度、备忘读写）
+npm pack        # 打包前会自动 build 和 test，产出 dsh-novel-continue-<版本>.tgz
+```
+
+## 来源与许可
+
+预设结构（纯净工具面隔离、去工程化的人设写法）参考了 [chuanban-dsh-writingset](https://github.com/Anarcadia/chuanban-dsh-writingset)（MIT © 船板）。续写节点的约束条款参考了 NovelForge 的提示词，续写思路参考了灵犀速写的「AI 续写」。
+
+MIT License，见 `LICENSE`。

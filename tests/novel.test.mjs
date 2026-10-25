@@ -1,21 +1,40 @@
 // novel.ts 纯函数测试：node --test tests/novel.test.mjs
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import {
   countChars, fillTemplate, getSection, mergePlans, normalizeProse, parsePlan,
   renderPlanned, repeatRatio, setSection, splitChapters, upsertSummary,
 } from '../dist/novel.js';
 
-const sample = new URL('../../books/全网群嘲明星/原文.txt', import.meta.url);
+// 仿常见网文导出格式：书名、简介、「第 N 章」、行首四空格缩进、段间空行、结尾"（全文完）"。
+const SAMPLE = `示例书名
 
-test('splitChapters 切出样本的 10 章，去掉缩进与"全文完"', () => {
-  const chapters = splitChapters(readFileSync(sample, 'utf8'));
-  assert.equal(chapters.length, 10);
-  assert.deepEqual(chapters.map((c) => c.number), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-  assert.ok(chapters[0].body.startsWith('上一秒，我还在公司厕所摸鱼，'));
-  assert.ok(!chapters[9].body.includes('全文完'));
-  assert.ok(chapters.every((c) => countChars(c.body) > 700));
+【简介】
+通过导入创建的作品
+
+第 1 章
+
+    上一秒，我还在公司厕所摸鱼，
+
+    下一秒便躺进豪华公寓的浴缸。
+
+第 2 章
+
+    有了结论，我开始溯源。
+
+第 3 章
+
+    雨停了。
+
+    （全文完）
+`;
+
+test('splitChapters 按「第 N 章」切分，去掉缩进与"全文完"', () => {
+  const chapters = splitChapters(SAMPLE);
+  assert.deepEqual(chapters.map((c) => c.number), [1, 2, 3]);
+  assert.equal(chapters[0].body, '上一秒，我还在公司厕所摸鱼，\n\n下一秒便躺进豪华公寓的浴缸。');
+  assert.equal(chapters[2].body, '雨停了。');
+  assert.equal(countChars(chapters[1].body), 11);
 });
 
 test('normalizeProse 段落间空一行', () => {
